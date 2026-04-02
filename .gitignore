@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.db
+.env
+__pycache__/
+*.pyc
+.vite/
+*.tsbuildinfo
