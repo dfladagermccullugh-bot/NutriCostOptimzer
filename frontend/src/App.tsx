@@ -88,7 +88,11 @@ export default function App() {
         <div className="lg:flex lg:gap-6">
           {/* Sidebar */}
           <div className="lg:w-[400px] lg:shrink-0 space-y-4">
-            <FoodInput onAddFood={addFood} aiEnabled={preferences.ai.enabled && !!preferences.ai.key} />
+            <FoodInput
+              onAddFood={addFood}
+              aiEnabled={preferences.ai.enabled && !!preferences.ai.key}
+              aiConfig={preferences.ai.key ? { endpoint: preferences.ai.endpoint, model: preferences.ai.model, key: preferences.ai.key } : undefined}
+            />
             <FoodList foods={foods} onRemove={removeFood} onUpdate={updateFood} />
             <GoalConfig config={goals} onChange={setGoals} />
 
