@@ -21,8 +21,7 @@ def search_foods(query: str, limit: int = 10) -> list[dict]:
 
 def _search_local(query: str, limit: int) -> list[dict]:
     with get_db() as conn:
-        words = query.strip().split()
-        if not words:
+        if not query.strip():
             return []
 
         sql = """
