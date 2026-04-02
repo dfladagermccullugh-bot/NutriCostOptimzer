@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_API_URL=${AI_API_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - USDA_API_KEY=${USDA_API_KEY:-}
+      - DB_PATH=/app/data/foods.db
