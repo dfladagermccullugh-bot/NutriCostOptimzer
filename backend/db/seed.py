@@ -40,7 +40,7 @@ FOODS = [
     (171122, "Ground pork, raw", "Pork", 263, 16.9, 0, 21.2),
     (171123, "Pork loin roast, raw", "Pork", 143, 21.4, 0, 5.9),
     (171124, "Bacon, raw", "Pork", 541, 11.6, 0, 53.3),
-    (171125, "Bacon, cooked", "Pork", 898, 12.6, 0.7, 99.5),
+    (171125, "Bacon, cooked", "Pork", 541, 37.0, 1.4, 41.8),
     (171126, "Ham, sliced, deli", "Pork", 120, 17.9, 2.0, 4.5),
     (171127, "Pork shoulder, raw", "Pork", 236, 16.7, 0, 18.4),
     (171128, "Pork ribs, raw", "Pork", 277, 15.5, 0, 23.4),

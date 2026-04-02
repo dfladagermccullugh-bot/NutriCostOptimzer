@@ -29,6 +29,7 @@ function buildModel(foods: FoodItem[], goals: GoalConfig): LPModel {
   const variables: Record<string, Record<string, number>> = {};
 
   for (const food of foods) {
+    if (food.weight_g <= 0) continue;
     const n = food.nutrition;
     const costPerGram = food.price_usd / food.weight_g;
     const key = food.id;
@@ -79,7 +80,7 @@ export function optimize(foods: FoodItem[], goals: GoalConfig): OptimizationResu
     const pro = (n.protein_g / 100) * grams;
     const carb = (n.carbs_g / 100) * grams;
     const fat = (n.fat_g / 100) * grams;
-    const cost = (food.price_usd / food.weight_g) * grams;
+    const cost = food.weight_g > 0 ? (food.price_usd / food.weight_g) * grams : 0;
 
     totalCal += cal;
     totalPro += pro;
