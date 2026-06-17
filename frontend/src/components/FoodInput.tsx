@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FoodItem, FoodSearchResult, NutritionPer100g } from "../types";
 import { useFoodSearch } from "../hooks/useFoodSearch";
 import { parseFood, searchFoods } from "../services/api";
+import { UNIT_TO_GRAMS } from "../constants";
 
 interface Props {
   onAddFood: (food: FoodItem) => void;
@@ -26,7 +27,9 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
   const [nlParsing, setNlParsing] = useState(false);
   const [nlError, setNlError] = useState("");
   const [parsedPreview, setParsedPreview] = useState<ParsedPreview | null>(null);
-  const [previewFood, setPreviewFood] = useState<FoodSearchResult | null>(null);
+  const [previewCandidates, setPreviewCandidates] = useState<FoodSearchResult[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [nlManualNutrition, setNlManualNutrition] = useState<NutritionPer100g>({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
   const [previewSearching, setPreviewSearching] = useState(false);
 
   // Structured input state
@@ -41,8 +44,6 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
 
   const { results, loading } = useFoodSearch(mode === "structured" ? name : "");
 
-  const unitMultipliers: Record<string, number> = { g: 1, kg: 1000, oz: 28.3495, lb: 453.592 };
-
   // --- Natural Language Handlers ---
 
   async function handleNlParse() {
@@ -50,7 +51,9 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
     setNlParsing(true);
     setNlError("");
     setParsedPreview(null);
-    setPreviewFood(null);
+    setPreviewCandidates([]);
+    setSelectedIdx(0);
+    setNlManualNutrition({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 
     try {
       const result = await parseFood(nlInput, aiConfig);
@@ -68,12 +71,12 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
       };
       setParsedPreview(preview);
 
-      // Search USDA for nutrition data
+      // Offer the top USDA matches for the user to choose from (audit C3) rather than silently
+      // picking the first result.
       setPreviewSearching(true);
       const searchResult = await searchFoods(preview.name);
-      if (searchResult.results.length > 0) {
-        setPreviewFood(searchResult.results[0]);
-      }
+      setPreviewCandidates(searchResult.results.slice(0, 5));
+      setSelectedIdx(0);
       setPreviewSearching(false);
     } catch {
       setNlError("Failed to parse input. Try rephrasing or switch to manual entry.");
@@ -83,28 +86,57 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
   }
 
   function handleNlAdd() {
-    if (!parsedPreview || !previewFood) return;
+    if (!parsedPreview) return;
+    if (parsedPreview.price_usd <= 0 || parsedPreview.weight_g <= 0) {
+      setNlError("Couldn't read a valid price and weight. Edit the text and parse again, or use manual entry.");
+      return;
+    }
+
+    const chosen = previewCandidates[selectedIdx];
+    const hasManual =
+      nlManualNutrition.calories > 0 || nlManualNutrition.protein_g > 0 || nlManualNutrition.carbs_g > 0 || nlManualNutrition.fat_g > 0;
+
+    // Prefer the selected USDA match; otherwise fall through to manual nutrition (audit C4).
+    let nutrition: NutritionPer100g;
+    let name: string;
+    let source: FoodItem["source"];
+    let fdc_id: number | undefined;
+    if (chosen) {
+      nutrition = chosen.per_100g;
+      name = chosen.description;
+      source = chosen.source as "local_db" | "usda_api";
+      fdc_id = chosen.fdc_id;
+    } else if (hasManual) {
+      nutrition = nlManualNutrition;
+      name = parsedPreview.name;
+      source = "manual";
+    } else {
+      setNlError("No nutrition data yet — pick a match or enter nutrition manually below.");
+      return;
+    }
 
     const food: FoodItem = {
       id: crypto.randomUUID(),
-      name: previewFood.description,
+      name,
       weight_g: parsedPreview.weight_g,
       price_usd: parsedPreview.price_usd,
-      nutrition: previewFood.per_100g,
-      source: previewFood.source as "local_db" | "usda_api",
-      fdc_id: previewFood.fdc_id,
+      nutrition,
+      source,
+      fdc_id,
     };
 
     onAddFood(food);
     setNlInput("");
     setParsedPreview(null);
-    setPreviewFood(null);
+    setPreviewCandidates([]);
+    setNlManualNutrition({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
     setNlError("");
   }
 
   function handleNlDiscard() {
     setParsedPreview(null);
-    setPreviewFood(null);
+    setPreviewCandidates([]);
+    setNlManualNutrition({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
     setNlError("");
   }
 
@@ -122,7 +154,7 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
     const p = parseFloat(price);
     if (!w || !p) return;
 
-    const weightG = w * (unitMultipliers[unit] || 1);
+    const weightG = w * (UNIT_TO_GRAMS[unit] || 1);
     const nutrition = selectedFood ? selectedFood.per_100g : manualNutrition;
 
     if (!nutrition.calories && !nutrition.protein_g && !nutrition.carbs_g && !nutrition.fat_g) return;
@@ -217,20 +249,53 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
                 <div className="text-xs text-gray-400">Looking up nutrition data...</div>
               )}
 
-              {previewFood && (
-                <div className="bg-blue-50 rounded-lg px-3 py-2 text-xs text-blue-800">
-                  USDA: {previewFood.per_100g.calories} cal &middot; {previewFood.per_100g.protein_g}g P &middot; {previewFood.per_100g.carbs_g}g C &middot; {previewFood.per_100g.fat_g}g F per 100g
+              {!previewSearching && previewCandidates.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-600">Pick the closest match:</p>
+                  {previewCandidates.map((c, i) => (
+                    <button
+                      key={c.fdc_id}
+                      onClick={() => setSelectedIdx(i)}
+                      className={`w-full text-left rounded-lg px-3 py-1.5 text-xs border transition-colors ${
+                        i === selectedIdx ? "bg-blue-50 border-blue-300 text-blue-900" : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="font-medium">{c.description}</div>
+                      <div className={i === selectedIdx ? "text-blue-700" : "text-gray-500"}>
+                        {c.per_100g.calories} cal &middot; {c.per_100g.protein_g}g P &middot; {c.per_100g.carbs_g}g C &middot; {c.per_100g.fat_g}g F /100g
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
 
-              {!previewSearching && !previewFood && (
-                <div className="text-xs text-amber-600">No USDA nutrition data found for "{parsedPreview.name}".</div>
+              {!previewSearching && previewCandidates.length === 0 && (
+                <div className="bg-amber-50 rounded-lg p-3 space-y-2">
+                  <p className="text-xs font-medium text-amber-800">
+                    No USDA match for "{parsedPreview.name}". Enter nutrition per 100g:
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["calories", "protein_g", "carbs_g", "fat_g"] as const).map((key) => (
+                      <div key={key}>
+                        <label className="text-xs text-gray-600">{key === "calories" ? "Calories (kcal)" : key.replace("_g", " (g)")}</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={nlManualNutrition[key] || ""}
+                          onChange={(e) => setNlManualNutrition({ ...nlManualNutrition, [key]: parseFloat(e.target.value) || 0 })}
+                          className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={handleNlAdd}
-                  disabled={!previewFood}
+                  disabled={previewSearching}
                   className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                 >
                   Add

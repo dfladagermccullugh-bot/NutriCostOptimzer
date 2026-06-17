@@ -1,33 +1,49 @@
-import { useState, useRef, useCallback } from "react";
-import type { FoodItem, GoalConfig as GoalConfigType, OptimizationResult, InfeasibilityDiagnostic } from "./types";
+import { useState, useRef, useCallback, useEffect } from "react";
+import type { FoodItem, GoalConfig as GoalConfigType } from "./types";
 import { usePreferences } from "./hooks/usePreferences";
-import { optimize, diagnoseInfeasibility } from "./services/optimizer";
-import { MIN_FOODS_TO_OPTIMIZE } from "./constants";
+import { computeSnapshot, type SnapshotResult } from "./services/snapshot";
+import { isUsableFood } from "./services/food";
+import { loadSession, saveSession } from "./store/session";
 import FoodInput from "./components/FoodInput";
 import FoodList from "./components/FoodList";
 import GoalConfig from "./components/GoalConfig";
-import ResultsDashboard from "./components/ResultsDashboard";
-import InfeasibilityPanel from "./components/InfeasibilityPanel";
+import SnapshotPanel from "./components/SnapshotPanel";
+import TunePanel from "./components/TunePanel";
+import BenchmarkPanel from "./components/BenchmarkPanel";
 import SettingsPanel from "./components/SettingsPanel";
+
+type Panel = "snapshot" | "tune" | "benchmark";
 
 export default function App() {
   const [preferences, setPreferences] = usePreferences();
-  const [foods, setFoods] = useState<FoodItem[]>([]);
-  const [goals, setGoals] = useState<GoalConfigType>({
-    targets: {
-      calories: preferences.defaults.calories,
-      protein: preferences.defaults.protein,
-      carbs: preferences.defaults.carbs,
-      fat: preferences.defaults.fat,
-    },
-    weeklyBudget: preferences.defaults.budget,
-    tolerance: preferences.defaults.tolerance,
-  });
-  const [result, setResult] = useState<OptimizationResult | null>(null);
-  const [diagnostics, setDiagnostics] = useState<InfeasibilityDiagnostic[]>([]);
+
+  // Restore the working basket + goals from a previous session (audit H4).
+  const restored = useRef(loadSession());
+  const [foods, setFoods] = useState<FoodItem[]>(restored.current.foods);
+  const [goals, setGoals] = useState<GoalConfigType>(
+    restored.current.goals ?? {
+      targets: {
+        calories: preferences.defaults.calories,
+        protein: preferences.defaults.protein,
+        carbs: preferences.defaults.carbs,
+        fat: preferences.defaults.fat,
+      },
+      weeklyBudget: preferences.defaults.budget,
+      tolerance: preferences.defaults.tolerance,
+    }
+  );
+
+  const [snapshot, setSnapshot] = useState<SnapshotResult | null>(null);
+  const [analyzed, setAnalyzed] = useState(false);
+  const [activePanel, setActivePanel] = useState<Panel>("snapshot");
   const [showSettings, setShowSettings] = useState(false);
   const [solving, setSolving] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  // Autosave the working session whenever the basket or goals change.
+  useEffect(() => {
+    saveSession({ foods, goals });
+  }, [foods, goals]);
 
   const addFood = useCallback((food: FoodItem) => {
     setFoods((prev) => [...prev, food]);
@@ -41,27 +57,29 @@ export default function App() {
     setFoods((prev) => prev.map((f) => (f.id === id ? { ...f, ...updates } : f)));
   }, []);
 
-  function handleOptimize() {
-    setSolving(true);
-    setDiagnostics([]);
+  const usableCount = foods.filter(isUsableFood).length;
+  const canAnalyze = usableCount >= 1;
 
-    // Use setTimeout to let the UI update with the spinner
+  function handleAnalyze() {
+    setSolving(true);
+
+    // Defer so the UI can paint the spinner before the synchronous compute.
+    // Snapshot is computed here; Tune and Benchmark panels compute reactively from foods/goals
+    // so their own controls (variance, cost mode) update live without re-analyzing.
     setTimeout(() => {
-      const res = optimize(foods, goals);
-      if (res.feasible) {
-        setResult(res);
-        setDiagnostics([]);
-        setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-      } else {
-        setResult(null);
-        const diag = diagnoseInfeasibility(foods, goals);
-        setDiagnostics(diag);
-      }
+      setSnapshot(computeSnapshot(foods, goals));
+      setAnalyzed(true);
+      setActivePanel("snapshot");
       setSolving(false);
+      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     }, 50);
   }
 
-  const canOptimize = foods.length >= MIN_FOODS_TO_OPTIMIZE;
+  const tabs: { key: Panel; label: string }[] = [
+    { key: "snapshot", label: "Snapshot" },
+    { key: "tune", label: "Tune" },
+    { key: "benchmark", label: "Benchmark" },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -96,16 +114,16 @@ export default function App() {
             <FoodList foods={foods} onRemove={removeFood} onUpdate={updateFood} />
             <GoalConfig config={goals} onChange={setGoals} />
 
-            {/* Optimize button */}
+            {/* Analyze button */}
             <div>
-              {!canOptimize && foods.length > 0 && (
+              {!canAnalyze && foods.length > 0 && (
                 <p className="text-xs text-amber-600 mb-2 text-center">
-                  Add at least {MIN_FOODS_TO_OPTIMIZE} foods to optimize.
+                  Add a food with a price and weight to analyze.
                 </p>
               )}
               <button
-                onClick={handleOptimize}
-                disabled={!canOptimize || solving}
+                onClick={handleAnalyze}
+                disabled={!canAnalyze || solving}
                 className="w-full bg-blue-600 text-white rounded-xl py-3 text-base font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
               >
                 {solving ? (
@@ -114,10 +132,10 @@ export default function App() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    Optimizing...
+                    Analyzing...
                   </span>
                 ) : (
-                  "Optimize Meal Plan"
+                  "Analyze Basket"
                 )}
               </button>
             </div>
@@ -125,28 +143,51 @@ export default function App() {
 
           {/* Results panel */}
           <div className="flex-1 mt-6 lg:mt-0" ref={resultsRef}>
-            {diagnostics.length > 0 && <InfeasibilityPanel diagnostics={diagnostics} />}
-            {result && <ResultsDashboard result={result} goals={goals} />}
-            {!result && diagnostics.length === 0 && (
+            {!analyzed && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-gray-400">
-                <div className="text-4xl mb-3">&#127860;</div>
-                <p className="text-lg font-medium text-gray-500">Your optimized meal plan will appear here</p>
-                <p className="text-sm mt-1">Add foods, set your targets, and hit Optimize</p>
+                <div className="text-4xl mb-3">&#128722;</div>
+                <p className="text-lg font-medium text-gray-500">Your basket analysis will appear here</p>
+                <p className="text-sm mt-1">Add the foods you buy, set your daily macros, and hit Analyze</p>
+              </div>
+            )}
+
+            {analyzed && (
+              <div className="space-y-4">
+                {/* Panel switcher */}
+                <div className="flex bg-gray-100 rounded-xl p-1">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActivePanel(tab.key)}
+                      className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+                        activePanel === tab.key ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {activePanel === "snapshot" && snapshot && <SnapshotPanel snapshot={snapshot} />}
+
+                {activePanel === "tune" && <TunePanel foods={foods} goals={goals} />}
+
+                {activePanel === "benchmark" && <BenchmarkPanel foods={foods} goals={goals} />}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Mobile fixed optimize button */}
-      {canOptimize && (
+      {/* Mobile fixed analyze button */}
+      {canAnalyze && (
         <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
           <button
-            onClick={handleOptimize}
+            onClick={handleAnalyze}
             disabled={solving}
             className="w-full bg-blue-600 text-white rounded-xl py-3 text-base font-semibold hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
           >
-            {solving ? "Optimizing..." : "Optimize Meal Plan"}
+            {solving ? "Analyzing..." : "Analyze Basket"}
           </button>
         </div>
       )}

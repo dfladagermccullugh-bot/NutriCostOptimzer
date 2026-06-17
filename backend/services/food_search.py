@@ -1,6 +1,8 @@
 import os
+import sqlite3
 import httpx
 from backend.db.database import get_db
+from backend.services.nutrition import extract_macros_from_usda, USDA_PER_100G_TYPES
 
 
 def search_foods(query: str, limit: int = 10) -> list[dict]:
@@ -63,56 +65,55 @@ def _search_usda_api(query: str, api_key: str, limit: int) -> list[dict]:
     try:
         resp = httpx.get(
             "https://api.nal.usda.gov/fdc/v1/foods/search",
-            params={"query": query, "pageSize": limit, "api_key": api_key},
+            params={
+                "query": query,
+                "pageSize": limit,
+                # Only per-100g datasets — exclude Branded foods whose nutrients are per-serving (audit C2).
+                "dataType": ",".join(USDA_PER_100G_TYPES),
+                "api_key": api_key,
+            },
             timeout=10,
         )
         resp.raise_for_status()
         data = resp.json()
-    except Exception:
+    except (httpx.HTTPError, ValueError):
+        # Network/HTTP failure or malformed JSON — degrade to no results (audit M5).
         return []
 
     results = []
+    cache_rows = []
     for item in data.get("foods", [])[:limit]:
-        nutrients = {n["nutrientName"]: n.get("value", 0) for n in item.get("foodNutrients", [])}
-        cal = nutrients.get("Energy", 0)
-        pro = nutrients.get("Protein", 0)
-        carb = nutrients.get("Carbohydrate, by difference", 0)
-        fat = nutrients.get("Total lipid (fat)", 0)
-
-        if not cal and not pro:
+        macros = extract_macros_from_usda(item)
+        if macros is None:
             continue
 
         fdc_id = item.get("fdcId", 0)
         desc = item.get("description", "Unknown")
         category = item.get("foodCategory", None)
 
-        # Cache into local DB
-        _cache_food(fdc_id, desc, category, cal, pro, carb, fat)
-
+        cache_rows.append((fdc_id, desc, category, macros["calories"], macros["protein_g"], macros["carbs_g"], macros["fat_g"]))
         results.append({
             "fdc_id": fdc_id,
             "description": desc,
             "category": category,
-            "per_100g": {
-                "calories": cal,
-                "protein_g": pro,
-                "carbs_g": carb,
-                "fat_g": fat,
-            },
+            "per_100g": macros,
             "source": "usda_api",
         })
 
+    _cache_foods(cache_rows)  # single batched write (audit M4)
     return results
 
 
-def _cache_food(fdc_id: int, desc: str, category: str | None, cal: float, pro: float, carb: float, fat: float):
-    """Cache a USDA API result into the local database."""
+def _cache_foods(rows: list[tuple]):
+    """Cache USDA API results into the local DB in a single batched write (audit M4)."""
+    if not rows:
+        return
     try:
         with get_db() as conn:
-            conn.execute(
+            conn.executemany(
                 "INSERT OR IGNORE INTO foods (fdc_id, description, category, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, source) VALUES (?, ?, ?, ?, ?, ?, ?, 'api')",
-                (fdc_id, desc, category, cal, pro, carb, fat),
+                rows,
             )
             conn.commit()
-    except Exception:
+    except sqlite3.Error:
         pass
