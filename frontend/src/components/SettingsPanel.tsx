@@ -82,13 +82,16 @@ export default function SettingsPanel({ preferences, onUpdate, onClose }: Props)
                   <input
                     type="number"
                     min="0"
+                    step={key === "budget" ? "0.01" : "1"}
                     value={preferences.defaults[key as keyof typeof preferences.defaults]}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const value = (key === "budget" ? parseFloat(raw) : parseInt(raw)) || 0;
                       onUpdate({
                         ...preferences,
-                        defaults: { ...preferences.defaults, [key]: parseInt(e.target.value) || 0 },
-                      })
-                    }
+                        defaults: { ...preferences.defaults, [key]: value },
+                      });
+                    }}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   />
                 </div>

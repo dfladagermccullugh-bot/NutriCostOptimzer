@@ -24,11 +24,12 @@ NutriCostOptimizer — a web (and future mobile) app that **optimizes the diet a
 - Near-term: build out the three-panel basket-optimizer model above.
 
 ## Current state (as of 2026-06-17)
-- Working MVP, clean tree on branch `claude/relaxed-rubin-t92k4w` → PR **#1** (do not open new PRs; push to update).
+- Clean tree on branch `claude/relaxed-rubin-t92k4w` → PR **#1** (do not open new PRs; push to update). Railway deploy is **live** (user set it up).
+- **v3.0 three-panel model is LIVE:** Snapshot / Tune / Benchmark over one basket + cost toggle; session persistence. Build green; **25 frontend + 17 backend tests passing.**
 - Frontend: React 19 + TS + Vite + Tailwind 4, client-side `javascript-lp-solver`, Recharts, jsPDF export.
-- Backend: FastAPI + SQLite, 200 USDA foods seeded, optional USDA API + AI-parse fallbacks.
-- No accounts; preferences in localStorage. Deploy via `docker compose up` (port 8080).
-- **Infra scaffolded:** Capacitor (web→iOS/Android, one codebase) + PWA (vite-plugin-pwa). Railway as host (single Docker container, Git-push deploy + PR previews). Web build verified green.
+- Backend: FastAPI + SQLite, 200 USDA foods seeded, optional USDA API + AI-parse fallbacks (SSRF-guarded).
+- No accounts; preferences + working basket in localStorage. Deploy via `docker compose up` (port 8080).
+- **Infra:** Capacitor (web→iOS/Android, one codebase) + PWA. Railway host (single Docker container, Git-push + PR previews).
 
 ## Infra: dev & deploy quick reference
 - **Web dev:** `cd frontend && npm install && npm run dev` (proxies `/api` → :8080 backend).
@@ -42,39 +43,33 @@ NutriCostOptimizer — a web (and future mobile) app that **optimizes the diet a
 |------|---------|--------------|
 | `handoff.md` | Near-term state + next-session to-dos | **Start of every session** |
 | `history.md` | Long-term session log / archive | Only when referencing the past |
-| `design.md` | Brand + visual aesthetic source of truth | Any UI/brand work |
-| `UI-UX.md` | UX laws & interaction guidelines | Any UX/flow work |
-| `PRD.md` | Full product requirements (v2.0) | Feature/scope decisions |
+| `design.md` | Brand + visual aesthetic ⚠️ **PLACEHOLDER — user will provide their own next session (supersedes this)** | Any UI/brand work |
+| `UI-UX.md` | UX laws & interaction ⚠️ **PLACEHOLDER — user will provide their own next session (supersedes this)** | Any UX/flow work |
+| `PRD.md` | Full product requirements (**v3.0** — see §1A authoritative) | Feature/scope decisions |
 
 ---
 
-## Open issues / known gaps
-- _None tracked yet — populate as they arise._
+## v3.0 build: CORE COMPLETE (steps 1–6)
+Snapshot / Tune / Benchmark panels all live over one basket, with the cost toggle, session
+persistence, trustworthy USDA/AI data, and the SSRF guard. Per-step detail is in git log + the
+2026-06-17 `history.md` entries.
 
-## v3.0 build sequence (the plan — work top-down)
-- [x] **1. Snapshot panel (MVP of the reframe)** + basket/goals persistence (H4) + guards: reject price≤0/weight≤0 (C1 via `isUsableFood`), totals summed from rounded rows (H5). Three-panel shell live (Snapshot / Tune-stub / Benchmark=existing LP, reframed as "theoretical floor"). Analyze flow replaces Optimize.
-- [x] **2. Optimizer test harness** (L5/F4) — Vitest added; 15 tests across `snapshot`/`food`/`optimizer` (`npm test`). Extend as Tune/Benchmark land.
-- [x] **3. Tune panel** — keep-every-food re-allocation via a plain-language **variance slider** ("allow variance up to X%" → each food bounded to (100±X)% of current daily amount, so nothing drops to zero). Calories NOT hard-constrained (H2 fix) — reported as a derived gap. Shows current→tuned amounts, weekly savings, macros after tuning. `services/tune.ts` + 6 tests.
-- [x] **4. Benchmark panel + cost toggle** — `BenchmarkPanel` self-computes (live cost toggle), reframed as theoretical floor. **Cost-objective toggle** (`CostModeToggle`) on Tune & Benchmark: "minimize spend" vs "target budget" (budget mode = cap cost at budget, minimize normalized P/C/F deviation, cost as tiebreaker). **H2 applied everywhere**: calories no longer a hard constraint (derived/reported) in optimizer + tune; diagnose no longer relaxes calories. 4 new tests (25 total). App refactored: Tune/Benchmark compute reactively from foods/goals (controls update live without re-analyzing).
-- [x] **5. Input hardening** — **C2**: USDA reads Energy as kcal (never kJ) + restricts to Foundation/SR-Legacy (per-100g) via `backend/services/nutrition.py`. **M1**: robust AI JSON parse (strips code fences / extracts `{...}`). **C3**: AI mode now shows top-5 USDA matches to pick from (no silent results[0]). **C4**: no match → inline manual nutrition entry (no more dead-end). Python tests added (pytest, 10) + backend/requirements-dev.txt.
-- [x] **6. M-tier hardening** — **M2**: AI endpoint SSRF guard (`backend/services/security.py`) — allowlists known providers + blocks private/loopback/metadata IPs; `AI_ALLOW_ANY_ENDPOINT` / `AI_ENDPOINT_ALLOWLIST` escape hatches (in `.env.example`). **M3**: frontend unit conversion unified in `constants.ts UNIT_TO_GRAMS`. **M4**: USDA cache writes batched (single `executemany`). **M5**: narrowed broad `except`s in food_search. +7 Python tests.
-  - **Deferred (intentional):** M4 FTS5 search (non-issue at 200 rows per audit), M5 Web-Worker solver (solver is sub-ms at current scale). Revisit when the cache/food count grows.
+## Audit status (29 findings)
+- **Closed:** C1, C2, C3, C4, H1 (resolved via the Tune/Benchmark split), H2, H3, H4, H5, M1, M2, M3, M5, L2, L5/F4 (test harness).
+- **Open (lower priority):** L1 (edit food *name/nutrition* after adding — weight/price already editable), L3 (clipboard column alignment), L4 (`randomUUID` fallback for old WebViews), M4-FTS5 (defer until DB grows), M5 Web-Worker solver (defer; solver is sub-ms now), M6 (turn `/api/health` into a status indicator).
 
-## Status: audit findings closed
-Critical C1–C4 ✓ · High H1 (Tune/Benchmark) H2 H4 H5 ✓ (H3 budget decimals still open) · M1 M2 M3 M5✓ M4(partial) · L5/F4 test harness ✓. Remaining: H3, L1–L4, M4-FTS, M5-worker, M6.
+## NEXT SESSION — start here (priority order)
+1. **Verify the live deploy** (carried from this session). PR #1 pushed a lot. Smoke-test the Railway URL: `/api/health` green → add a basket → Analyze → check all three panels + the cost toggle on Tune/Benchmark.
+2. **Brand & UI pass — BLOCKED on user input.** The user will provide their own `design.md` and `UI-UX.md` next session; **those supersede the current placeholder files in the repo.** Once provided: reconcile the generic Tailwind UI to the brand system (tokens, tabular numerals, consistent macro colors, component polish across all three panels).
+3. **Receipt photo → OCR basket entry** — the headline future input; required to be "fully functional." Populates the same basket the three panels read. Net-new feature → design the approach first.
+4. Optional cleanups when convenient: L1 / L3 / L4 / M6, then code-split the ~650 kB JS bundle (jsPDF/html2canvas are the weight).
 
-## Tests
+## Tests (run before every push)
 - Frontend: `cd frontend && npm test` (Vitest, 25 — snapshot/food/optimizer/tune).
-- Backend: `pip install -r backend/requirements-dev.txt && python3 -m pytest backend` (17 — nutrition/AI parsing/security).
-- [ ] Brand & UI implementation (`design.md` + `UI-UX.md`) — deferred until functional model lands.
-
-### Done
-- [x] Railway deploy + public URL (user). Capacitor + PWA scaffolded. PNG icon set. `VITE_API_BASE_URL` for native.
-- [x] Functional audit complete (see history 2026-06-17) and product reframed to v3.0 three-panel model.
-- [ ] Apply `design.md` + `UI-UX.md` as the styling baseline; reconcile current generic Tailwind look against the brand system.
-- [ ] (Future) consider code-splitting — main JS chunk is ~650 kB (jsPDF/html2canvas heavy).
+- Backend: `pip install -r backend/requirements-dev.txt && python3 -m pytest backend` (17 — nutrition/AI/security).
 
 ## Decisions log (recent)
+- 2026-06-17: v3.0 core (3 panels + cost toggle) built & tested; audit critical/high tier closed (incl. quick cleanups H3/L2). User will supply own `design.md`/`UI-UX.md` next session (replaces placeholders).
 - 2026-06-17: **Product reframe to v3.0** — basket optimizer, not meal planner. Three panels (Snapshot/Tune/Benchmark) over one engine + cost toggle. PRD §1A is authoritative. Functional audit done (29 findings).
 - 2026-06-17: Mobile = **Capacitor** (reuse React/Vite, one codebase) over React Native/Expo. PWA added alongside.
 - 2026-06-17: Web host = **Railway** (single Docker container, Git-push + PR previews, no cold starts). Render/Fly noted as alternatives; Fly is the geo-ready future option.
