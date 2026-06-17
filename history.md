@@ -33,6 +33,42 @@ Created the four-document steering system to act as baseline sources of truth.
 
 ---
 
+## 2026-06-17 — Functional audit + product reframe to v3.0 (basket optimizer)
+
+**Summary:** Ran an exhaustive functional audit of the whole app (every backend service/router/db
+layer + every frontend component/hook/service), then the owner reframed the product. Captured the
+new direction into the PRD (v3.0) and handoff.
+
+**Functional audit (29 findings, by severity):**
+- *Critical:* C1 zero/missing price → "free" food the LP abuses (no price>0 guard); C2 USDA calories
+  may be kJ not kcal + branded foods break per-100g basis; C3 AI mode auto-picks wrong nutrition
+  match (orders by shortest name); C4 AI mode dead-ends when no USDA match.
+- *High:* H1 pure cost-min produces degenerate plans (eat 1.5kg of 3 foods); H2 calorie window
+  fights macro windows → false infeasibility; H3 budget integer-only; H4 basket/goals lost on
+  refresh; H5 displayed per-food macros don't sum to totals.
+- *Medium:* M1 brittle AI JSON parse; M2 SSRF + user keys transit server (now public); M3 duplicate
+  unit-conversion tables (frontend/backend drift); M4 LIKE '%q%' won't scale + per-food cache
+  inserts; M5 broad except + main-thread solver; M6 dead/misleading health check.
+- *Low:* L1 row-edit unit mismatch/silent discard; L2 silent fail on invalid; L3 clipboard column
+  alignment; L4 randomUUID secure-context; L5 **no automated tests anywhere**.
+
+**Reframe (owner directive):** Product is NOT a meal planner / shopping-list generator. It
+**optimizes the diet the user already has** — they input the basket they already buy + daily
+macros; the app makes the cost↔macro interaction legible and optimizable. Resolved via **one
+analysis, three selectable panels**: Snapshot (insight), Tune (re-allocate keeping every food),
+Benchmark (theoretical floor). Cost toggle (minimize vs target budget) on Tune & Benchmark.
+This elegantly resolves H1 (keep-basket vs cheapest-subset become Tune vs Benchmark). Receipt
+photo/OCR is a future input mechanism feeding the same model.
+
+**Docs changed:** `PRD.md` → v3.0 (new §1A authoritative product model; Overview & Goals revised;
+§5.3/§5.4 marked LEGACY/superseded; re-sequenced delivery). `handoff.md` → product model section +
+v3.0 build sequence. Build order: Snapshot+persistence+C1/H5 → test harness → Tune+H2 → Benchmark+
+cost toggle → input hardening (C2/C3/C4/M1) → M-tier.
+
+**Carried forward:** Start build at Snapshot panel (see handoff build sequence).
+
+---
+
 ## 2026-06-17 — Loose ends: PNG icons + Capacitor backend URL
 
 **Summary:** User completed the Railway deploy (live public URL). Cleared the two carried-over
