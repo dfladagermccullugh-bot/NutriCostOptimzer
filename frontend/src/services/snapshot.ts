@@ -57,7 +57,7 @@ export interface SnapshotResult {
   gaps: { calories: MacroGap; protein: MacroGap; carbs: MacroGap; fat: MacroGap };
 }
 
-function macroGap(achieved: number, target: number, tolerance: number): MacroGap {
+export function macroGap(achieved: number, target: number, tolerance: number): MacroGap {
   const delta = achieved - target;
   const pct = target > 0 ? (delta / target) * 100 : 0;
   const within = target > 0 ? Math.abs(delta) <= target * (tolerance / 100) : delta === 0;

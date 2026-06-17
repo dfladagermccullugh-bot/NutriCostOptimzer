@@ -10,6 +10,7 @@ import FoodInput from "./components/FoodInput";
 import FoodList from "./components/FoodList";
 import GoalConfig from "./components/GoalConfig";
 import SnapshotPanel from "./components/SnapshotPanel";
+import TunePanel from "./components/TunePanel";
 import ResultsDashboard from "./components/ResultsDashboard";
 import InfeasibilityPanel from "./components/InfeasibilityPanel";
 import SettingsPanel from "./components/SettingsPanel";
@@ -188,15 +189,7 @@ export default function App() {
 
                 {activePanel === "snapshot" && snapshot && <SnapshotPanel snapshot={snapshot} />}
 
-                {activePanel === "tune" && (
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-                    <h3 className="font-semibold text-gray-900 mb-1">Tune — coming next</h3>
-                    <p className="text-sm text-gray-500 max-w-md mx-auto">
-                      Keeps every food you bought and re-allocates how much of each to hit your macros for the
-                      least cost. Nothing you bought gets dropped.
-                    </p>
-                  </div>
-                )}
+                {activePanel === "tune" && <TunePanel foods={foods} goals={goals} />}
 
                 {activePanel === "benchmark" && (
                   <>
