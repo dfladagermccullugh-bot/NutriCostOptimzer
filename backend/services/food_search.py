@@ -1,6 +1,7 @@
 import os
 import httpx
 from backend.db.database import get_db
+from backend.services.nutrition import extract_macros_from_usda, USDA_PER_100G_TYPES
 
 
 def search_foods(query: str, limit: int = 10) -> list[dict]:
@@ -63,7 +64,13 @@ def _search_usda_api(query: str, api_key: str, limit: int) -> list[dict]:
     try:
         resp = httpx.get(
             "https://api.nal.usda.gov/fdc/v1/foods/search",
-            params={"query": query, "pageSize": limit, "api_key": api_key},
+            params={
+                "query": query,
+                "pageSize": limit,
+                # Only per-100g datasets — exclude Branded foods whose nutrients are per-serving (audit C2).
+                "dataType": ",".join(USDA_PER_100G_TYPES),
+                "api_key": api_key,
+            },
             timeout=10,
         )
         resp.raise_for_status()
@@ -73,13 +80,8 @@ def _search_usda_api(query: str, api_key: str, limit: int) -> list[dict]:
 
     results = []
     for item in data.get("foods", [])[:limit]:
-        nutrients = {n["nutrientName"]: n.get("value", 0) for n in item.get("foodNutrients", [])}
-        cal = nutrients.get("Energy", 0)
-        pro = nutrients.get("Protein", 0)
-        carb = nutrients.get("Carbohydrate, by difference", 0)
-        fat = nutrients.get("Total lipid (fat)", 0)
-
-        if not cal and not pro:
+        macros = extract_macros_from_usda(item)
+        if macros is None:
             continue
 
         fdc_id = item.get("fdcId", 0)
@@ -87,18 +89,13 @@ def _search_usda_api(query: str, api_key: str, limit: int) -> list[dict]:
         category = item.get("foodCategory", None)
 
         # Cache into local DB
-        _cache_food(fdc_id, desc, category, cal, pro, carb, fat)
+        _cache_food(fdc_id, desc, category, macros["calories"], macros["protein_g"], macros["carbs_g"], macros["fat_g"])
 
         results.append({
             "fdc_id": fdc_id,
             "description": desc,
             "category": category,
-            "per_100g": {
-                "calories": cal,
-                "protein_g": pro,
-                "carbs_g": carb,
-                "fat_g": fat,
-            },
+            "per_100g": macros,
             "source": "usda_api",
         })
 

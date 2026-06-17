@@ -56,8 +56,12 @@ NutriCostOptimizer — a web (and future mobile) app that **optimizes the diet a
 - [x] **2. Optimizer test harness** (L5/F4) — Vitest added; 15 tests across `snapshot`/`food`/`optimizer` (`npm test`). Extend as Tune/Benchmark land.
 - [x] **3. Tune panel** — keep-every-food re-allocation via a plain-language **variance slider** ("allow variance up to X%" → each food bounded to (100±X)% of current daily amount, so nothing drops to zero). Calories NOT hard-constrained (H2 fix) — reported as a derived gap. Shows current→tuned amounts, weekly savings, macros after tuning. `services/tune.ts` + 6 tests.
 - [x] **4. Benchmark panel + cost toggle** — `BenchmarkPanel` self-computes (live cost toggle), reframed as theoretical floor. **Cost-objective toggle** (`CostModeToggle`) on Tune & Benchmark: "minimize spend" vs "target budget" (budget mode = cap cost at budget, minimize normalized P/C/F deviation, cost as tiebreaker). **H2 applied everywhere**: calories no longer a hard constraint (derived/reported) in optimizer + tune; diagnose no longer relaxes calories. 4 new tests (25 total). App refactored: Tune/Benchmark compute reactively from foods/goals (controls update live without re-analyzing).
-- [ ] **5. Input hardening** — C2 USDA data integrity (kcal not kJ; restrict dataType), C3/C4 AI match disambiguation + fallback, M1 JSON robustness. ← **next**
-- [ ] **6. M-tier hardening** — SSRF/key handling now public (M2), unit-conversion single source (M3), FTS/caching (M4), Web Worker solver (M5).
+- [x] **5. Input hardening** — **C2**: USDA reads Energy as kcal (never kJ) + restricts to Foundation/SR-Legacy (per-100g) via `backend/services/nutrition.py`. **M1**: robust AI JSON parse (strips code fences / extracts `{...}`). **C3**: AI mode now shows top-5 USDA matches to pick from (no silent results[0]). **C4**: no match → inline manual nutrition entry (no more dead-end). Python tests added (pytest, 10) + backend/requirements-dev.txt.
+- [ ] **6. M-tier hardening** — SSRF/key handling now public (M2), unit-conversion single source (M3), FTS/caching (M4), Web Worker solver (M5). ← **next**
+
+## Tests
+- Frontend: `cd frontend && npm test` (Vitest, 25 — snapshot/food/optimizer/tune).
+- Backend: `pip install -r backend/requirements-dev.txt && python3 -m pytest backend` (10 — nutrition/AI parsing).
 - [ ] Brand & UI implementation (`design.md` + `UI-UX.md`) — deferred until functional model lands.
 
 ### Done

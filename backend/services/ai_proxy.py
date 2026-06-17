@@ -1,5 +1,6 @@
 import os
 import httpx
+from backend.services.nutrition import extract_json_object
 
 SYSTEM_PROMPT = """You are a food input parser. Extract the following from the user's input:
 - name: the food item name (lowercase, no quantities)
@@ -51,9 +52,11 @@ async def parse_food_input(
             resp.raise_for_status()
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
-            import json
-            return json.loads(content)
+            # Robust to models that wrap JSON in code fences or add prose (audit M1).
+            return extract_json_object(content)
         except httpx.HTTPStatusError as e:
             return {"error": f"AI API error: {e.response.status_code}"}
+        except ValueError:
+            return {"error": "Couldn't read the AI response. Try rephrasing or use manual entry."}
         except (httpx.RequestError, Exception) as e:
             return {"error": f"AI service unavailable: {str(e)}"}
