@@ -5,10 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:host": "vite --host",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "npm run build && cap sync",
+    "cap:ios": "cap run ios",
+    "cap:android": "cap run android"
   },
   "dependencies": {
+    "@capacitor/core": "^8.4.0",
     "javascript-lp-solver": "0.4.24",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -17,6 +22,9 @@
     "jspdf-autotable": "^3.8.4"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.0",
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/ios": "^8.4.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
@@ -25,6 +33,7 @@
     "tailwindcss": "^4.0.0",
     "@tailwindcss/vite": "^4.0.0",
     "typescript": "~5.7.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vite-plugin-pwa": "^1.3.0"
   }
 }
