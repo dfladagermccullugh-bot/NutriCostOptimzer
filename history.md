@@ -33,6 +33,31 @@ Created the four-document steering system to act as baseline sources of truth.
 
 ---
 
+## 2026-06-17 — v3.0 core build (Snapshot / Tune / Benchmark) + audit fixes
+
+**Summary:** Built the entire three-panel basket-optimizer model and closed the critical/high tier
+of the functional audit, all test-backed. Branch `claude/relaxed-rubin-t92k4w` → PR #1.
+
+**Engines (frontend `services/`):**
+- `food.ts` `isUsableFood` — single validity gate (price>0, weight>0, has macros). Fixes C1; used by snapshot, tune, optimizer so a zero-price food can never be "free."
+- `snapshot.ts` — pure arithmetic (weekly ÷7 = daily): cost/macros delivered, $/g per macro, spend share, where-your-money-goes by calorie share, gaps vs targets. Totals summed from rounded rows (H5). Exposes `macroGap`.
+- `tune.ts` — LP keeping every food within ±variance% of current daily amount (lower bound>0 ⇒ nothing dropped). Two cost modes.
+- `optimizer.ts` — reworked into `minimize` (cheapest to hit P/C/F within tolerance) and `budget` (cap cost, minimize normalized P/C/F deviation via L1 aux vars, cost tiebreaker) modes. **Calories no longer a hard constraint anywhere (H2)** — derived/reported; `diagnose` no longer relaxes calories. Cost summed from allocation (correct in budget mode).
+
+**UI:** `SnapshotPanel`, `TunePanel` (plain-language variance slider), `BenchmarkPanel` (self-computing, "theoretical floor"), shared `CostModeToggle`. `App` rewritten: "Analyze Basket" + three-tab switcher; Tune/Benchmark recompute reactively (controls update live). `store/session.ts` persists basket+goals (H4).
+
+**Backend:** `services/nutrition.py` (C2: Energy kcal-only, restrict to Foundation/SR-Legacy; M1: fenced/prose JSON extraction). `services/security.py` (M2: SSRF allowlist + private-IP block; `AI_ALLOW_ANY_ENDPOINT`/`AI_ENDPOINT_ALLOWLIST`). `food_search.py` C3 candidates path uses these; batched cache write (M4); narrowed excepts (M5). `ai_proxy.py` uses both helpers.
+
+**Input UX:** FoodInput AI mode shows top-5 USDA matches (C3) and falls through to manual nutrition when none (C4). Decimal budgets (H3). Inline validation errors instead of silent failures on row-edit and structured-add (L2). Unit conversion unified in `constants.ts` (M3).
+
+**Tests:** Vitest 25 (snapshot/food/optimizer/tune) + pytest 17 (nutrition/AI/security). `backend/requirements-dev.txt` added.
+
+**Deferred (intentional):** M4 FTS5, M5 Web-Worker solver (not needed at current scale). Open low-pri: L1 (name/nutrition edit), L3, L4, M6.
+
+**Carried to next session:** verify live deploy; user provides own design.md/UI-UX.md → brand pass; receipt OCR. See handoff.
+
+---
+
 ## 2026-06-17 — Functional audit + product reframe to v3.0 (basket optimizer)
 
 **Summary:** Ran an exhaustive functional audit of the whole app (every backend service/router/db

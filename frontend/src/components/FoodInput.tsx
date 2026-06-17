@@ -41,6 +41,7 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
   const [showManualNutrition, setShowManualNutrition] = useState(false);
   const [manualNutrition, setManualNutrition] = useState<NutritionPer100g>({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
   const [showResults, setShowResults] = useState(false);
+  const [structError, setStructError] = useState("");
 
   const { results, loading } = useFoodSearch(mode === "structured" ? name : "");
 
@@ -152,12 +153,18 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
   function handleStructuredAdd() {
     const w = parseFloat(weight);
     const p = parseFloat(price);
-    if (!w || !p) return;
+    if (!(w > 0) || !(p > 0)) {
+      setStructError("Weight and price must both be greater than 0.");
+      return;
+    }
 
     const weightG = w * (UNIT_TO_GRAMS[unit] || 1);
     const nutrition = selectedFood ? selectedFood.per_100g : manualNutrition;
 
-    if (!nutrition.calories && !nutrition.protein_g && !nutrition.carbs_g && !nutrition.fat_g) return;
+    if (!nutrition.calories && !nutrition.protein_g && !nutrition.carbs_g && !nutrition.fat_g) {
+      setStructError("Select a food or enter nutrition values first.");
+      return;
+    }
 
     const food: FoodItem = {
       id: crypto.randomUUID(),
@@ -175,6 +182,7 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
     setPrice("");
     setSelectedFood(null);
     setShowManualNutrition(false);
+    setStructError("");
   }
 
   return (
@@ -429,6 +437,9 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
             </div>
           </div>
 
+          {structError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">{structError}</div>
+          )}
           <button
             onClick={handleStructuredAdd}
             disabled={(!selectedFood && !showManualNutrition) || !weight || !price}

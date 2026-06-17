@@ -11,6 +11,7 @@ function FoodRow({ food, onRemove, onUpdate }: { food: FoodItem; onRemove: () =>
   const [editing, setEditing] = useState(false);
   const [editWeight, setEditWeight] = useState("");
   const [editPrice, setEditPrice] = useState("");
+  const [editError, setEditError] = useState("");
 
   // Swipe state
   const touchStartX = useRef(0);
@@ -19,6 +20,7 @@ function FoodRow({ food, onRemove, onUpdate }: { food: FoodItem; onRemove: () =>
 
   function startEdit() {
     setEditing(true);
+    setEditError("");
     setEditWeight(String(food.weight_g));
     setEditPrice(String(food.price_usd));
   }
@@ -26,7 +28,12 @@ function FoodRow({ food, onRemove, onUpdate }: { food: FoodItem; onRemove: () =>
   function saveEdit() {
     const w = parseFloat(editWeight);
     const p = parseFloat(editPrice);
-    if (w > 0 && p > 0) onUpdate({ weight_g: w, price_usd: p });
+    if (!(w > 0) || !(p > 0)) {
+      setEditError("Weight and price must both be greater than 0.");
+      return;
+    }
+    onUpdate({ weight_g: w, price_usd: p });
+    setEditError("");
     setEditing(false);
   }
 
@@ -73,12 +80,15 @@ function FoodRow({ food, onRemove, onUpdate }: { food: FoodItem; onRemove: () =>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-gray-900 text-sm truncate">{food.name}</div>
             {editing ? (
-              <div className="flex gap-2 mt-1">
-                <input type="number" value={editWeight} onChange={(e) => setEditWeight(e.target.value)} className="w-24 rounded border border-gray-300 px-2 py-1 text-xs" placeholder="grams" />
-                <span className="text-xs text-gray-400 self-center">g</span>
-                <input type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className="w-20 rounded border border-gray-300 px-2 py-1 text-xs" placeholder="price" />
-                <button onClick={saveEdit} className="text-xs text-blue-600 hover:text-blue-800">Save</button>
-                <button onClick={() => setEditing(false)} className="text-xs text-gray-400">Cancel</button>
+              <div className="mt-1">
+                <div className="flex gap-2">
+                  <input type="number" min="0" step="0.01" value={editWeight} onChange={(e) => setEditWeight(e.target.value)} className="w-24 rounded border border-gray-300 px-2 py-1 text-xs" placeholder="grams" />
+                  <span className="text-xs text-gray-400 self-center">g</span>
+                  <input type="number" min="0" step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className="w-20 rounded border border-gray-300 px-2 py-1 text-xs" placeholder="price" />
+                  <button onClick={saveEdit} className="text-xs text-blue-600 hover:text-blue-800">Save</button>
+                  <button onClick={() => { setEditing(false); setEditError(""); }} className="text-xs text-gray-400">Cancel</button>
+                </div>
+                {editError && <div className="text-xs text-red-600 mt-1">{editError}</div>}
               </div>
             ) : (
               <div className="text-xs text-gray-500 mt-0.5 space-x-2">
