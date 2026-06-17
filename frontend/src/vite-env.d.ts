@@ -1,5 +1,14 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  /** Absolute backend base URL for Capacitor native builds (no trailing slash). Empty = relative /api (web/PWA). */
+  readonly VITE_API_BASE_URL?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
 declare module "javascript-lp-solver" {
   interface SolverResult {
     feasible: boolean;

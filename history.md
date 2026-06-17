@@ -33,6 +33,29 @@ Created the four-document steering system to act as baseline sources of truth.
 
 ---
 
+## 2026-06-17 — Loose ends: PNG icons + Capacitor backend URL
+
+**Summary:** User completed the Railway deploy (live public URL). Cleared the two carried-over
+loose ends to unblock mobile.
+
+**Changes:**
+- **PNG icon set** generated from the brand mark (rasterized via `@resvg/resvg-js`, installed
+  `--no-save` so it is not a project dependency): `icon-192.png`, `icon-512.png`,
+  `icon-512-maskable.png` (full-bleed for launcher masks), `apple-touch-icon.png` (180),
+  `favicon-32.png`. Manifest (`vite.config.ts`) and `index.html` now reference PNGs; the SVG
+  remains as a modern favicon.
+- **Configurable backend URL:** `src/services/api.ts` now prefixes all three fetches with
+  `API_BASE = import.meta.env.VITE_API_BASE_URL ?? ""`. Web/PWA = relative `/api` (same origin);
+  Capacitor native builds set `VITE_API_BASE_URL` to the Railway URL. Typed in `vite-env.d.ts`;
+  documented in new `frontend/.env.example`.
+
+**Verification:** `npm run build` green; dist contains all PNGs + `manifest.webmanifest` pointing
+at them; `sw.js` generated.
+
+**Carried forward:** Brand & UI implementation (apply design.md/UI-UX.md) is the next major thread.
+
+---
+
 ## 2026-06-17 — Web + mobile infrastructure scaffolded
 
 **Summary:** Set the initial infrastructure direction for the long-term web+mobile vision and

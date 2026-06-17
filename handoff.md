@@ -42,10 +42,12 @@ NutriCostOptimizer — a web (and future mobile) app that builds the **cheapest 
 - _None tracked yet — populate as they arise._
 
 ## To-do (next session)
-- [ ] **User action:** create Railway account, connect repo, enable PR environments. (I can't log into the host; configs are ready.)
-- [ ] Generate proper PNG icon set (192/512 + maskable) — currently a single SVG brand mark placeholder.
-- [ ] Wire an absolute backend URL for Capacitor builds so `/api` features work in the native app.
-- [ ] Begin "optimize current capabilities" pass (perf, edge cases, UX polish) — prioritize with user.
+- [x] ~~User action: Railway deploy + public URL~~ — DONE by user (live).
+- [x] ~~PNG icon set (192/512 + maskable + apple-touch + favicon-32)~~ — generated from brand mark.
+- [x] ~~Wire absolute backend URL for Capacitor~~ — `VITE_API_BASE_URL` (see `frontend/.env.example`); set it for native builds, unset for web/PWA.
+- [ ] Brand & UI implementation: apply `design.md` + `UI-UX.md` to the real app (tokenized palette, tabular numerals, macro colors, component polish). ← **next major thread**
+- [ ] Begin/continue "optimize current capabilities" pass (perf, edge cases, UX polish) — prioritize with user.
+- [ ] Icon is a functional brand mark (blue square + "N"); revisit with a designer later if desired.
 - [ ] Apply `design.md` + `UI-UX.md` as the styling baseline; reconcile current generic Tailwind look against the brand system.
 - [ ] (Future) consider code-splitting — main JS chunk is ~650 kB (jsPDF/html2canvas heavy).
 
