@@ -1,5 +1,6 @@
 import type { FoodItem, GoalConfig, OptimizationResult, OptimizedFood, InfeasibilityDiagnostic } from "../types";
 import solver from "javascript-lp-solver";
+import { isUsableFood } from "./food";
 
 const MAX_GRAMS_PER_FOOD = 1500;
 
@@ -29,7 +30,7 @@ function buildModel(foods: FoodItem[], goals: GoalConfig): LPModel {
   const variables: Record<string, Record<string, number>> = {};
 
   for (const food of foods) {
-    if (food.weight_g <= 0) continue;
+    if (!isUsableFood(food)) continue; // audit C1: never let a zero-price food become "free"
     const n = food.nutrition;
     const costPerGram = food.price_usd / food.weight_g;
     const key = food.id;

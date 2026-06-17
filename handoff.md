@@ -52,9 +52,9 @@ NutriCostOptimizer — a web (and future mobile) app that **optimizes the diet a
 - _None tracked yet — populate as they arise._
 
 ## v3.0 build sequence (the plan — work top-down)
-- [ ] **1. Snapshot panel (MVP of the reframe)** + basket/goals persistence (H4) + correctness guards: reject price≤0/weight≤0 (C1), reconcile displayed totals (H5).
-- [ ] **2. Optimizer test harness** (L5/F4) — unit tests for feasibility, C1, H2 before building Tune/Benchmark.
-- [ ] **3. Tune panel** — keep-every-food re-allocation (min-serving constraints) + calorie/macro consistency fix (H2).
+- [x] **1. Snapshot panel (MVP of the reframe)** + basket/goals persistence (H4) + guards: reject price≤0/weight≤0 (C1 via `isUsableFood`), totals summed from rounded rows (H5). Three-panel shell live (Snapshot / Tune-stub / Benchmark=existing LP, reframed as "theoretical floor"). Analyze flow replaces Optimize.
+- [x] **2. Optimizer test harness** (L5/F4) — Vitest added; 15 tests across `snapshot`/`food`/`optimizer` (`npm test`). Extend as Tune/Benchmark land.
+- [ ] **3. Tune panel** — keep-every-food re-allocation (min-serving constraints) + calorie/macro consistency fix (H2). ← **next**
 - [ ] **4. Benchmark panel** — reframe current LP as theoretical floor + cost-objective toggle (minimize vs target budget).
 - [ ] **5. Input hardening** — C2 USDA data integrity (kcal not kJ; restrict dataType), C3/C4 AI match disambiguation + fallback, M1 JSON robustness.
 - [ ] **6. M-tier hardening** — SSRF/key handling now public (M2), unit-conversion single source (M3), FTS/caching (M4), Web Worker solver (M5).

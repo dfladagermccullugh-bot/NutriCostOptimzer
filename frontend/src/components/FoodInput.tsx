@@ -84,6 +84,10 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
 
   function handleNlAdd() {
     if (!parsedPreview || !previewFood) return;
+    if (parsedPreview.price_usd <= 0 || parsedPreview.weight_g <= 0) {
+      setNlError("Couldn't read a valid price and weight. Edit the text and parse again, or use manual entry.");
+      return;
+    }
 
     const food: FoodItem = {
       id: crypto.randomUUID(),
