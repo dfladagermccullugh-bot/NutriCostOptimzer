@@ -1,7 +1,10 @@
 import solver from "javascript-lp-solver";
 import type { FoodItem, GoalConfig } from "../types";
+import type { CostMode } from "./optimizer";
 import { isUsableFood } from "./food";
 import { macroGap, type MacroGap } from "./snapshot";
+
+const DEVIATION_WEIGHT = 1000;
 
 // Tune panel (PRD §1A): keep EVERY food the user bought and re-allocate how much of each to hit
 // their macros for the least cost. Each food is bounded to ±variance% of its current daily amount,
@@ -40,6 +43,7 @@ export interface TuneTotals {
 export interface TuneResult {
   feasible: boolean;
   variancePct: number;
+  costMode: CostMode;
   foods: TunedFood[];
   current: TuneTotals;
   tuned: TuneTotals;
@@ -59,10 +63,17 @@ function totalsOf(rows: { dailyCost: number; calories: number; protein: number; 
   };
 }
 
-export function computeTune(foods: FoodItem[], goals: GoalConfig, variancePct: number): TuneResult {
+export function computeTune(
+  foods: FoodItem[],
+  goals: GoalConfig,
+  variancePct: number,
+  costMode: CostMode = "minimize"
+): TuneResult {
   const usable = foods.filter(isUsableFood);
   const v = variancePct / 100;
   const t = goals.tolerance / 100;
+  const dailyBudget = goals.weeklyBudget / 7;
+  const budgetMode = costMode === "budget";
 
   // Current daily snapshot rows (what they buy now).
   const currentRows = usable.map((f) => {
@@ -80,6 +91,7 @@ export function computeTune(foods: FoodItem[], goals: GoalConfig, variancePct: n
   const empty: TuneResult = {
     feasible: false,
     variancePct,
+    costMode,
     foods: [],
     current,
     tuned: { dailyCost: 0, weeklyCost: 0, calories: 0, protein: 0, carbs: 0, fat: 0 },
@@ -88,14 +100,18 @@ export function computeTune(foods: FoodItem[], goals: GoalConfig, variancePct: n
   };
   if (usable.length === 0) return empty;
 
-  const constraints: Record<string, { min?: number; max?: number }> = {
-    protein_min: { min: goals.targets.protein * (1 - t) },
-    protein_max: { max: goals.targets.protein * (1 + t) },
-    carbs_min: { min: goals.targets.carbs * (1 - t) },
-    carbs_max: { max: goals.targets.carbs * (1 + t) },
-    fat_min: { min: goals.targets.fat * (1 - t) },
-    fat_max: { max: goals.targets.fat * (1 + t) },
-  };
+  // minimize: hit P/C/F within tolerance, minimize cost.
+  // budget: cap cost at the budget, minimize normalized P/C/F deviation (cost as tiebreaker).
+  const constraints: Record<string, { min?: number; max?: number }> = budgetMode
+    ? { budget: { max: dailyBudget } }
+    : {
+        protein_min: { min: goals.targets.protein * (1 - t) },
+        protein_max: { max: goals.targets.protein * (1 + t) },
+        carbs_min: { min: goals.targets.carbs * (1 - t) },
+        carbs_max: { max: goals.targets.carbs * (1 + t) },
+        fat_min: { min: goals.targets.fat * (1 - t) },
+        fat_max: { max: goals.targets.fat * (1 + t) },
+      };
 
   const variables: Record<string, Record<string, number>> = {};
   for (const f of usable) {
@@ -103,17 +119,29 @@ export function computeTune(foods: FoodItem[], goals: GoalConfig, variancePct: n
     const currentDaily = f.weight_g / DAYS;
     const lb = currentDaily * (1 - v);
     const ub = currentDaily * (1 + v);
+    const costPerGram = f.price_usd / f.weight_g;
     const key = f.id;
 
-    variables[key] = {
-      cost: f.price_usd / f.weight_g,
-      protein_min: n.protein_g / 100,
-      protein_max: n.protein_g / 100,
-      carbs_min: n.carbs_g / 100,
-      carbs_max: n.carbs_g / 100,
-      fat_min: n.fat_g / 100,
-      fat_max: n.fat_g / 100,
-    };
+    variables[key] = budgetMode
+      ? {
+          fit: costPerGram,
+          budget: costPerGram,
+          dpos_protein: n.protein_g / 100,
+          dneg_protein: n.protein_g / 100,
+          dpos_carbs: n.carbs_g / 100,
+          dneg_carbs: n.carbs_g / 100,
+          dpos_fat: n.fat_g / 100,
+          dneg_fat: n.fat_g / 100,
+        }
+      : {
+          cost: costPerGram,
+          protein_min: n.protein_g / 100,
+          protein_max: n.protein_g / 100,
+          carbs_min: n.carbs_g / 100,
+          carbs_max: n.carbs_g / 100,
+          fat_min: n.fat_g / 100,
+          fat_max: n.fat_g / 100,
+        };
     // Per-food variance bounds — both > 0 so the food is never dropped.
     constraints[`lb_${key}`] = { min: lb };
     constraints[`ub_${key}`] = { max: ub };
@@ -121,7 +149,22 @@ export function computeTune(foods: FoodItem[], goals: GoalConfig, variancePct: n
     variables[key][`ub_${key}`] = 1;
   }
 
-  const res = solver.Solve({ optimize: "cost", opType: "min", constraints, variables });
+  if (budgetMode) {
+    for (const m of ["protein", "carbs", "fat"] as const) {
+      const target = goals.targets[m];
+      constraints[`dpos_${m}`] = { max: target };
+      constraints[`dneg_${m}`] = { min: target };
+      variables[`d_${m}`] = {
+        fit: DEVIATION_WEIGHT / (target > 0 ? target : 1),
+        [`dpos_${m}`]: -1,
+        [`dneg_${m}`]: 1,
+      };
+    }
+  }
+
+  const res = budgetMode
+    ? solver.Solve({ optimize: "fit", opType: "min", constraints, variables })
+    : solver.Solve({ optimize: "cost", opType: "min", constraints, variables });
   if (!res.feasible) return empty;
 
   const tunedFoods: TunedFood[] = usable.map((f) => {
@@ -151,6 +194,7 @@ export function computeTune(foods: FoodItem[], goals: GoalConfig, variancePct: n
   return {
     feasible: true,
     variancePct,
+    costMode,
     foods: tunedFoods,
     current,
     tuned,

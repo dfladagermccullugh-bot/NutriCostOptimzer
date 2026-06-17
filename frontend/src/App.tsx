@@ -1,18 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { FoodItem, GoalConfig as GoalConfigType, OptimizationResult, InfeasibilityDiagnostic } from "./types";
+import type { FoodItem, GoalConfig as GoalConfigType } from "./types";
 import { usePreferences } from "./hooks/usePreferences";
-import { optimize, diagnoseInfeasibility } from "./services/optimizer";
 import { computeSnapshot, type SnapshotResult } from "./services/snapshot";
 import { isUsableFood } from "./services/food";
 import { loadSession, saveSession } from "./store/session";
-import { MIN_FOODS_TO_OPTIMIZE } from "./constants";
 import FoodInput from "./components/FoodInput";
 import FoodList from "./components/FoodList";
 import GoalConfig from "./components/GoalConfig";
 import SnapshotPanel from "./components/SnapshotPanel";
 import TunePanel from "./components/TunePanel";
-import ResultsDashboard from "./components/ResultsDashboard";
-import InfeasibilityPanel from "./components/InfeasibilityPanel";
+import BenchmarkPanel from "./components/BenchmarkPanel";
 import SettingsPanel from "./components/SettingsPanel";
 
 type Panel = "snapshot" | "tune" | "benchmark";
@@ -37,8 +34,6 @@ export default function App() {
   );
 
   const [snapshot, setSnapshot] = useState<SnapshotResult | null>(null);
-  const [result, setResult] = useState<OptimizationResult | null>(null);
-  const [diagnostics, setDiagnostics] = useState<InfeasibilityDiagnostic[]>([]);
   const [analyzed, setAnalyzed] = useState(false);
   const [activePanel, setActivePanel] = useState<Panel>("snapshot");
   const [showSettings, setShowSettings] = useState(false);
@@ -64,29 +59,15 @@ export default function App() {
 
   const usableCount = foods.filter(isUsableFood).length;
   const canAnalyze = usableCount >= 1;
-  const canOptimize = usableCount >= MIN_FOODS_TO_OPTIMIZE;
 
   function handleAnalyze() {
     setSolving(true);
 
-    // Defer so the UI can paint the spinner before the synchronous solve.
+    // Defer so the UI can paint the spinner before the synchronous compute.
+    // Snapshot is computed here; Tune and Benchmark panels compute reactively from foods/goals
+    // so their own controls (variance, cost mode) update live without re-analyzing.
     setTimeout(() => {
       setSnapshot(computeSnapshot(foods, goals));
-
-      if (canOptimize) {
-        const res = optimize(foods, goals);
-        if (res.feasible) {
-          setResult(res);
-          setDiagnostics([]);
-        } else {
-          setResult(null);
-          setDiagnostics(diagnoseInfeasibility(foods, goals));
-        }
-      } else {
-        setResult(null);
-        setDiagnostics([]);
-      }
-
       setAnalyzed(true);
       setActivePanel("snapshot");
       setSolving(false);
@@ -191,25 +172,7 @@ export default function App() {
 
                 {activePanel === "tune" && <TunePanel foods={foods} goals={goals} />}
 
-                {activePanel === "benchmark" && (
-                  <>
-                    {!canOptimize && (
-                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center text-gray-500">
-                        <p className="text-sm">Add at least {MIN_FOODS_TO_OPTIMIZE} foods to compute the theoretical cost floor.</p>
-                      </div>
-                    )}
-                    {canOptimize && diagnostics.length > 0 && <InfeasibilityPanel diagnostics={diagnostics} />}
-                    {canOptimize && result && (
-                      <>
-                        <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-800">
-                          <strong>Theoretical floor.</strong> The cheapest way to hit your macros from these foods —
-                          a benchmark, not a meal plan. Use <em>Tune</em> for a realistic plan that keeps your whole basket.
-                        </div>
-                        <ResultsDashboard result={result} goals={goals} />
-                      </>
-                    )}
-                  </>
-                )}
+                {activePanel === "benchmark" && <BenchmarkPanel foods={foods} goals={goals} />}
               </div>
             )}
           </div>

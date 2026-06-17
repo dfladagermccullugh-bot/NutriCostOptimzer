@@ -3,6 +3,15 @@ import solver from "javascript-lp-solver";
 import { isUsableFood } from "./food";
 
 const MAX_GRAMS_PER_FOOD = 1500;
+// In budget mode, macro deviation is minimized; this weight makes hitting macros dominate cost,
+// while cost remains a tiebreaker so the solution is also the cheapest way to reach that fit.
+const DEVIATION_WEIGHT = 1000;
+
+export type CostMode = "minimize" | "budget";
+
+export interface OptimizeOptions {
+  costMode?: CostMode;
+}
 
 interface LPModel {
   optimize: string;
@@ -11,13 +20,14 @@ interface LPModel {
   variables: Record<string, Record<string, number>>;
 }
 
-function buildModel(foods: FoodItem[], goals: GoalConfig): LPModel {
+// Minimize total cost subject to hitting protein/carbs/fat within tolerance and staying under budget.
+// Calories are intentionally NOT constrained (audit H2) — they are derived and reported, never a
+// hard bound that can fight the macro bands.
+function buildMinimizeModel(foods: FoodItem[], goals: GoalConfig): LPModel {
   const t = goals.tolerance / 100;
   const dailyBudget = goals.weeklyBudget / 7;
 
   const constraints: Record<string, { min?: number; max?: number }> = {
-    calories_min: { min: goals.targets.calories * (1 - t) },
-    calories_max: { max: goals.targets.calories * (1 + t) },
     protein_min: { min: goals.targets.protein * (1 - t) },
     protein_max: { max: goals.targets.protein * (1 + t) },
     carbs_min: { min: goals.targets.carbs * (1 - t) },
@@ -28,17 +38,13 @@ function buildModel(foods: FoodItem[], goals: GoalConfig): LPModel {
   };
 
   const variables: Record<string, Record<string, number>> = {};
-
   for (const food of foods) {
-    if (!isUsableFood(food)) continue; // audit C1: never let a zero-price food become "free"
+    if (!isUsableFood(food)) continue;
     const n = food.nutrition;
     const costPerGram = food.price_usd / food.weight_g;
     const key = food.id;
-
     variables[key] = {
       cost: costPerGram,
-      calories_min: n.calories / 100,
-      calories_max: n.calories / 100,
       protein_min: n.protein_g / 100,
       protein_max: n.protein_g / 100,
       carbs_min: n.carbs_g / 100,
@@ -47,22 +53,60 @@ function buildModel(foods: FoodItem[], goals: GoalConfig): LPModel {
       fat_max: n.fat_g / 100,
       budget: costPerGram,
     };
-
-    // Per-food max constraint
     constraints[`max_${key}`] = { max: MAX_GRAMS_PER_FOOD };
     variables[key][`max_${key}`] = 1;
   }
 
-  return {
-    optimize: "cost",
-    opType: "min",
-    constraints,
-    variables,
-  };
+  return { optimize: "cost", opType: "min", constraints, variables };
 }
 
-export function optimize(foods: FoodItem[], goals: GoalConfig): OptimizationResult {
-  const model = buildModel(foods, goals);
+// Respect a target budget: cap cost at the daily budget, then get as close to the protein/carbs/fat
+// targets as possible (minimize normalized deviation). Cost is a tiebreaker. Calories derived (H2).
+function buildBudgetModel(foods: FoodItem[], goals: GoalConfig): LPModel {
+  const dailyBudget = goals.weeklyBudget / 7;
+
+  const constraints: Record<string, { min?: number; max?: number }> = {
+    budget: { max: dailyBudget },
+  };
+
+  const variables: Record<string, Record<string, number>> = {};
+  for (const food of foods) {
+    if (!isUsableFood(food)) continue;
+    const n = food.nutrition;
+    const costPerGram = food.price_usd / food.weight_g;
+    const key = food.id;
+    variables[key] = {
+      fit: costPerGram, // cost tiebreaker in the objective
+      budget: costPerGram,
+      dpos_protein: n.protein_g / 100,
+      dneg_protein: n.protein_g / 100,
+      dpos_carbs: n.carbs_g / 100,
+      dneg_carbs: n.carbs_g / 100,
+      dpos_fat: n.fat_g / 100,
+      dneg_fat: n.fat_g / 100,
+    };
+    constraints[`max_${key}`] = { max: MAX_GRAMS_PER_FOOD };
+    variables[key][`max_${key}`] = 1;
+  }
+
+  // Absolute-deviation variables: d_m >= |achieved_m - target_m|, minimized in the objective.
+  for (const m of ["protein", "carbs", "fat"] as const) {
+    const target = goals.targets[m];
+    constraints[`dpos_${m}`] = { max: target }; // achieved - d <= target
+    constraints[`dneg_${m}`] = { min: target }; // achieved + d >= target
+    variables[`d_${m}`] = {
+      fit: DEVIATION_WEIGHT / (target > 0 ? target : 1),
+      [`dpos_${m}`]: -1,
+      [`dneg_${m}`]: 1,
+    };
+  }
+
+  return { optimize: "fit", opType: "min", constraints, variables };
+}
+
+export function optimize(foods: FoodItem[], goals: GoalConfig, options: OptimizeOptions = {}): OptimizationResult {
+  const costMode = options.costMode ?? "minimize";
+  const model = costMode === "budget" ? buildBudgetModel(foods, goals) : buildMinimizeModel(foods, goals);
   const result = solver.Solve(model);
 
   if (!result.feasible) {
@@ -70,10 +114,10 @@ export function optimize(foods: FoodItem[], goals: GoalConfig): OptimizationResu
   }
 
   const optimizedFoods: OptimizedFood[] = [];
-  let totalCal = 0, totalPro = 0, totalCarb = 0, totalFat = 0;
+  let totalCal = 0, totalPro = 0, totalCarb = 0, totalFat = 0, totalCost = 0;
 
   for (const food of foods) {
-    const grams = result[food.id] || 0;
+    const grams = (result as Record<string, number>)[food.id] || 0;
     if (grams < 0.1) continue;
 
     const n = food.nutrition;
@@ -87,6 +131,7 @@ export function optimize(foods: FoodItem[], goals: GoalConfig): OptimizationResu
     totalPro += pro;
     totalCarb += carb;
     totalFat += fat;
+    totalCost += cost;
 
     optimizedFoods.push({
       name: food.name,
@@ -101,15 +146,17 @@ export function optimize(foods: FoodItem[], goals: GoalConfig): OptimizationResu
 
   optimizedFoods.sort((a, b) => b.grams - a.grams);
 
+  // Totals summed from the rounded rows so the dashboard reconciles (audit H5). Cost comes from the
+  // actual allocation, not result.result (which is the deviation objective in budget mode).
   return {
     feasible: true,
-    dailyCost: Math.round(result.result * 100) / 100,
+    dailyCost: Math.round(totalCost * 100) / 100,
     foods: optimizedFoods,
     totals: {
-      calories: Math.round(totalCal),
-      protein: Math.round(totalPro * 10) / 10,
-      carbs: Math.round(totalCarb * 10) / 10,
-      fat: Math.round(totalFat * 10) / 10,
+      calories: optimizedFoods.reduce((s, f) => s + f.calories, 0),
+      protein: Math.round(optimizedFoods.reduce((s, f) => s + f.protein, 0) * 10) / 10,
+      carbs: Math.round(optimizedFoods.reduce((s, f) => s + f.carbs, 0) * 10) / 10,
+      fat: Math.round(optimizedFoods.reduce((s, f) => s + f.fat, 0) * 10) / 10,
     },
   };
 }
@@ -138,10 +185,9 @@ export function diagnoseInfeasibility(foods: FoodItem[], goals: GoalConfig): Inf
     });
   }
 
-  // Try relaxing each macro
+  // Try relaxing each macro (calories are not a constraint anymore — audit H2)
   const macros: Array<{ key: keyof typeof goals.targets; label: string }> = [
     { key: "protein", label: "protein" },
-    { key: "calories", label: "calorie" },
     { key: "carbs", label: "carb" },
     { key: "fat", label: "fat" },
   ];
@@ -150,10 +196,9 @@ export function diagnoseInfeasibility(foods: FoodItem[], goals: GoalConfig): Inf
     const relaxed = { ...goals, targets: { ...goals.targets, [macro.key]: goals.targets[macro.key] * 0.75 } };
     if (optimize(foods, relaxed).feasible) {
       const diff = goals.targets[macro.key] - relaxed.targets[macro.key];
-      const unit = macro.key === "calories" ? "kcal" : "g";
       diagnostics.push({
         constraint: macro.key,
-        suggestion: `Reduce ${macro.label} target by ~${Math.round(diff)}${unit} to find a solution`,
+        suggestion: `Reduce ${macro.label} target by ~${Math.round(diff)}g to find a solution`,
         adjustedValue: relaxed.targets[macro.key],
       });
     }

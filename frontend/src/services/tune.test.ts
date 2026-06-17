@@ -68,4 +68,16 @@ describe("computeTune", () => {
     const r = computeTune([chicken, rice, freebie], goals, 50);
     expect(r.foods.map((f) => f.id).sort()).toEqual(["chicken", "rice"]);
   });
+
+  it("budget mode keeps spend within the target budget", () => {
+    const r = computeTune([chicken, rice], { ...goals, weeklyBudget: 60 }, 50, "budget");
+    expect(r.feasible).toBe(true);
+    expect(r.tuned.weeklyCost).toBeLessThanOrEqual(60 + 0.05);
+  });
+
+  it("budget mode is infeasible when even the minimum amounts exceed the budget", () => {
+    // current weekly cost is $9.80; at 0% variance min spend is $9.80, so a $5 budget is impossible.
+    const r = computeTune([chicken, rice], { ...goals, weeklyBudget: 5 }, 0, "budget");
+    expect(r.feasible).toBe(false);
+  });
 });

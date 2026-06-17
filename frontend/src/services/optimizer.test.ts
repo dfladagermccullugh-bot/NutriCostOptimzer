@@ -46,4 +46,18 @@ describe("optimize", () => {
     const free = withFree.foods.find((f) => f.name === freebie.name);
     expect(free).toBeUndefined();
   });
+
+  it("budget mode never exceeds the daily budget", () => {
+    const tightBudget: GoalConfig = { ...goals, weeklyBudget: 49 }; // $7/day
+    const r = optimize([chicken, rice, oil], tightBudget, { costMode: "budget" });
+    expect(r.feasible).toBe(true);
+    expect(r.dailyCost).toBeLessThanOrEqual(7 + 0.01);
+  });
+
+  it("budget mode gets closer to targets when given a larger budget", () => {
+    const tight = optimize([chicken, rice, oil], { ...goals, weeklyBudget: 35 }, { costMode: "budget" });
+    const loose = optimize([chicken, rice, oil], { ...goals, weeklyBudget: 200 }, { costMode: "budget" });
+    const proteinGap = (r: { totals: { protein: number } }) => Math.abs(r.totals.protein - goals.targets.protein);
+    expect(proteinGap(loose)).toBeLessThanOrEqual(proteinGap(tight));
+  });
 });
