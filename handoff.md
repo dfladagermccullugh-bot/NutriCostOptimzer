@@ -57,11 +57,15 @@ NutriCostOptimizer — a web (and future mobile) app that **optimizes the diet a
 - [x] **3. Tune panel** — keep-every-food re-allocation via a plain-language **variance slider** ("allow variance up to X%" → each food bounded to (100±X)% of current daily amount, so nothing drops to zero). Calories NOT hard-constrained (H2 fix) — reported as a derived gap. Shows current→tuned amounts, weekly savings, macros after tuning. `services/tune.ts` + 6 tests.
 - [x] **4. Benchmark panel + cost toggle** — `BenchmarkPanel` self-computes (live cost toggle), reframed as theoretical floor. **Cost-objective toggle** (`CostModeToggle`) on Tune & Benchmark: "minimize spend" vs "target budget" (budget mode = cap cost at budget, minimize normalized P/C/F deviation, cost as tiebreaker). **H2 applied everywhere**: calories no longer a hard constraint (derived/reported) in optimizer + tune; diagnose no longer relaxes calories. 4 new tests (25 total). App refactored: Tune/Benchmark compute reactively from foods/goals (controls update live without re-analyzing).
 - [x] **5. Input hardening** — **C2**: USDA reads Energy as kcal (never kJ) + restricts to Foundation/SR-Legacy (per-100g) via `backend/services/nutrition.py`. **M1**: robust AI JSON parse (strips code fences / extracts `{...}`). **C3**: AI mode now shows top-5 USDA matches to pick from (no silent results[0]). **C4**: no match → inline manual nutrition entry (no more dead-end). Python tests added (pytest, 10) + backend/requirements-dev.txt.
-- [ ] **6. M-tier hardening** — SSRF/key handling now public (M2), unit-conversion single source (M3), FTS/caching (M4), Web Worker solver (M5). ← **next**
+- [x] **6. M-tier hardening** — **M2**: AI endpoint SSRF guard (`backend/services/security.py`) — allowlists known providers + blocks private/loopback/metadata IPs; `AI_ALLOW_ANY_ENDPOINT` / `AI_ENDPOINT_ALLOWLIST` escape hatches (in `.env.example`). **M3**: frontend unit conversion unified in `constants.ts UNIT_TO_GRAMS`. **M4**: USDA cache writes batched (single `executemany`). **M5**: narrowed broad `except`s in food_search. +7 Python tests.
+  - **Deferred (intentional):** M4 FTS5 search (non-issue at 200 rows per audit), M5 Web-Worker solver (solver is sub-ms at current scale). Revisit when the cache/food count grows.
+
+## Status: audit findings closed
+Critical C1–C4 ✓ · High H1 (Tune/Benchmark) H2 H4 H5 ✓ (H3 budget decimals still open) · M1 M2 M3 M5✓ M4(partial) · L5/F4 test harness ✓. Remaining: H3, L1–L4, M4-FTS, M5-worker, M6.
 
 ## Tests
 - Frontend: `cd frontend && npm test` (Vitest, 25 — snapshot/food/optimizer/tune).
-- Backend: `pip install -r backend/requirements-dev.txt && python3 -m pytest backend` (10 — nutrition/AI parsing).
+- Backend: `pip install -r backend/requirements-dev.txt && python3 -m pytest backend` (17 — nutrition/AI parsing/security).
 - [ ] Brand & UI implementation (`design.md` + `UI-UX.md`) — deferred until functional model lands.
 
 ### Done

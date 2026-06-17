@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FoodItem, FoodSearchResult, NutritionPer100g } from "../types";
 import { useFoodSearch } from "../hooks/useFoodSearch";
 import { parseFood, searchFoods } from "../services/api";
+import { UNIT_TO_GRAMS } from "../constants";
 
 interface Props {
   onAddFood: (food: FoodItem) => void;
@@ -42,8 +43,6 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
   const [showResults, setShowResults] = useState(false);
 
   const { results, loading } = useFoodSearch(mode === "structured" ? name : "");
-
-  const unitMultipliers: Record<string, number> = { g: 1, kg: 1000, oz: 28.3495, lb: 453.592 };
 
   // --- Natural Language Handlers ---
 
@@ -155,7 +154,7 @@ export default function FoodInput({ onAddFood, aiEnabled, aiConfig }: Props) {
     const p = parseFloat(price);
     if (!w || !p) return;
 
-    const weightG = w * (unitMultipliers[unit] || 1);
+    const weightG = w * (UNIT_TO_GRAMS[unit] || 1);
     const nutrition = selectedFood ? selectedFood.per_100g : manualNutrition;
 
     if (!nutrition.calories && !nutrition.protein_g && !nutrition.carbs_g && !nutrition.fat_g) return;

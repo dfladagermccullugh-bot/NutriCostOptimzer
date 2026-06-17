@@ -1,6 +1,7 @@
 import os
 import httpx
 from backend.services.nutrition import extract_json_object
+from backend.services.security import validate_ai_endpoint
 
 SYSTEM_PROMPT = """You are a food input parser. Extract the following from the user's input:
 - name: the food item name (lowercase, no quantities)
@@ -31,6 +32,10 @@ async def parse_food_input(
 
     if not endpoint or not api_key:
         return {"error": "AI API not configured. Please use manual input or configure AI settings."}
+
+    endpoint_error = validate_ai_endpoint(endpoint)
+    if endpoint_error:
+        return {"error": endpoint_error}
 
     headers = {
         "Authorization": f"Bearer {api_key}",

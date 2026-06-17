@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import httpx
 from backend.db.database import get_db
 from backend.services.nutrition import extract_macros_from_usda, USDA_PER_100G_TYPES
@@ -75,10 +76,12 @@ def _search_usda_api(query: str, api_key: str, limit: int) -> list[dict]:
         )
         resp.raise_for_status()
         data = resp.json()
-    except Exception:
+    except (httpx.HTTPError, ValueError):
+        # Network/HTTP failure or malformed JSON — degrade to no results (audit M5).
         return []
 
     results = []
+    cache_rows = []
     for item in data.get("foods", [])[:limit]:
         macros = extract_macros_from_usda(item)
         if macros is None:
@@ -88,9 +91,7 @@ def _search_usda_api(query: str, api_key: str, limit: int) -> list[dict]:
         desc = item.get("description", "Unknown")
         category = item.get("foodCategory", None)
 
-        # Cache into local DB
-        _cache_food(fdc_id, desc, category, macros["calories"], macros["protein_g"], macros["carbs_g"], macros["fat_g"])
-
+        cache_rows.append((fdc_id, desc, category, macros["calories"], macros["protein_g"], macros["carbs_g"], macros["fat_g"]))
         results.append({
             "fdc_id": fdc_id,
             "description": desc,
@@ -99,17 +100,20 @@ def _search_usda_api(query: str, api_key: str, limit: int) -> list[dict]:
             "source": "usda_api",
         })
 
+    _cache_foods(cache_rows)  # single batched write (audit M4)
     return results
 
 
-def _cache_food(fdc_id: int, desc: str, category: str | None, cal: float, pro: float, carb: float, fat: float):
-    """Cache a USDA API result into the local database."""
+def _cache_foods(rows: list[tuple]):
+    """Cache USDA API results into the local DB in a single batched write (audit M4)."""
+    if not rows:
+        return
     try:
         with get_db() as conn:
-            conn.execute(
+            conn.executemany(
                 "INSERT OR IGNORE INTO foods (fdc_id, description, category, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, source) VALUES (?, ?, ?, ?, ?, ?, ?, 'api')",
-                (fdc_id, desc, category, cal, pro, carb, fat),
+                rows,
             )
             conn.commit()
-    except Exception:
+    except sqlite3.Error:
         pass
