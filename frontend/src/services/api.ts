@@ -1,5 +1,10 @@
 import type { FoodSearchResult } from "../types";
 
+// Web/PWA is served same-origin as the API, so the default ("") yields relative /api paths.
+// Capacitor native builds load assets locally, so set VITE_API_BASE_URL to the deployed backend
+// (e.g. https://your-app.up.railway.app, no trailing slash) at build time. See frontend/.env.example.
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+
 interface SearchResponse {
   results: FoodSearchResult[];
   query: string;
@@ -23,7 +28,7 @@ interface HealthResponse {
 }
 
 export async function searchFoods(query: string, limit = 10): Promise<SearchResponse> {
-  const resp = await fetch(`/api/foods/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+  const resp = await fetch(`${API_BASE}/api/foods/search?q=${encodeURIComponent(query)}&limit=${limit}`);
   if (!resp.ok) throw new Error("Search failed");
   return resp.json();
 }
@@ -35,7 +40,7 @@ export async function parseFood(
   const body: Record<string, unknown> = { input };
   if (aiConfig?.key) body.ai_config = aiConfig;
 
-  const resp = await fetch("/api/parse", {
+  const resp = await fetch(`${API_BASE}/api/parse`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -45,7 +50,7 @@ export async function parseFood(
 }
 
 export async function checkHealth(): Promise<HealthResponse> {
-  const resp = await fetch("/api/health");
+  const resp = await fetch(`${API_BASE}/api/health`);
   if (!resp.ok) throw new Error("Health check failed");
   return resp.json();
 }

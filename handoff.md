@@ -6,18 +6,36 @@
 ---
 
 ## Project in one line
-NutriCostOptimizer — a web (and future mobile) app that builds the **cheapest daily meal plan** meeting a user's macro targets, using a client-side LP solver.
+NutriCostOptimizer — a web (and future mobile) app that **optimizes the diet a user already has**: they input the basket they already buy (foods + amounts + prices) + their daily macros, and get the cost↔macro interaction made legible and optimized.
+
+## Product model (v3.0 reframe — see PRD §1A) — AUTHORITATIVE
+- **NOT** a meal planner / shopping-list generator. It optimizes an *existing* basket.
+- Input: user's actual basket (weekly foods/amounts/prices; ÷7 = daily) + daily macros. Receipt-photo/OCR is a future input mechanism.
+- **One analysis, three selectable panels** (increasing aggressiveness):
+  1. **Snapshot** — insight only, changes nothing: cost/100g per macro, $ per gram protein/carb/fat, spend share, macro-per-dollar leaderboard, gap to targets. *(Arithmetic; foundational MVP.)*
+  2. **Tune** — re-allocate keeping every food (min-serving so nothing zeroes): hit macros for least cost. "Same groceries, eat this much → save $X."
+  3. **Benchmark** — full LP (may drop foods), framed as the theoretical cost floor.
+- **Cost toggle** on Tune & Benchmark: minimize spend (default) vs respect a target budget. Snapshot = report only.
+- One engine produces a rich result object; all panels read from it.
 
 ## Vision (north star)
 - Web **and** native mobile apps from a shared core.
 - **Live grocery-store pricing** via major-grocer APIs → location-aware "best cost per dollar per macro" insights.
-- Until then: **optimize and harden current capabilities.**
+- Near-term: build out the three-panel basket-optimizer model above.
 
 ## Current state (as of 2026-06-17)
-- Working MVP, clean tree on branch `claude/relaxed-rubin-t92k4w`.
+- Working MVP, clean tree on branch `claude/relaxed-rubin-t92k4w` → PR **#1** (do not open new PRs; push to update).
 - Frontend: React 19 + TS + Vite + Tailwind 4, client-side `javascript-lp-solver`, Recharts, jsPDF export.
 - Backend: FastAPI + SQLite, 200 USDA foods seeded, optional USDA API + AI-parse fallbacks.
 - No accounts; preferences in localStorage. Deploy via `docker compose up` (port 8080).
+- **Infra scaffolded:** Capacitor (web→iOS/Android, one codebase) + PWA (vite-plugin-pwa). Railway as host (single Docker container, Git-push deploy + PR previews). Web build verified green.
+
+## Infra: dev & deploy quick reference
+- **Web dev:** `cd frontend && npm install && npm run dev` (proxies `/api` → :8080 backend).
+- **Full stack local:** `docker compose up` → http://localhost:8080.
+- **Mobile (Capacitor) live reload:** `npm run dev:host`, then `export CAP_SERVER_URL=<LAN url>`, then `npm run cap:ios` / `cap:android`. Native projects are generated locally (`npx cap add ios|android`) — they are gitignored (need Xcode/Android Studio).
+- **Deploy (Railway):** connect the repo in Railway dashboard → it reads `Dockerfile` + `railway.json` (healthcheck `/api/health`, honors `$PORT`). Push = redeploy + PR preview URL.
+- **Mobile→backend caveat:** native shells load assets locally, so `/api` calls (AI parse, USDA search) need an **absolute backend URL** before those optional features work in-app. Core optimizer is client-side and works offline. Not yet wired.
 
 ## Steering documents (sources of truth)
 | File | Purpose | When to read |
@@ -33,12 +51,26 @@ NutriCostOptimizer — a web (and future mobile) app that builds the **cheapest 
 ## Open issues / known gaps
 - _None tracked yet — populate as they arise._
 
-## To-do (next session)
-- [ ] Confirm app builds & runs end-to-end (`docker compose up`) in current environment.
-- [ ] Begin "optimize current capabilities" pass (perf, edge cases, UX polish) — prioritize with user.
+## v3.0 build sequence (the plan — work top-down)
+- [ ] **1. Snapshot panel (MVP of the reframe)** + basket/goals persistence (H4) + correctness guards: reject price≤0/weight≤0 (C1), reconcile displayed totals (H5).
+- [ ] **2. Optimizer test harness** (L5/F4) — unit tests for feasibility, C1, H2 before building Tune/Benchmark.
+- [ ] **3. Tune panel** — keep-every-food re-allocation (min-serving constraints) + calorie/macro consistency fix (H2).
+- [ ] **4. Benchmark panel** — reframe current LP as theoretical floor + cost-objective toggle (minimize vs target budget).
+- [ ] **5. Input hardening** — C2 USDA data integrity (kcal not kJ; restrict dataType), C3/C4 AI match disambiguation + fallback, M1 JSON robustness.
+- [ ] **6. M-tier hardening** — SSRF/key handling now public (M2), unit-conversion single source (M3), FTS/caching (M4), Web Worker solver (M5).
+- [ ] Brand & UI implementation (`design.md` + `UI-UX.md`) — deferred until functional model lands.
+
+### Done
+- [x] Railway deploy + public URL (user). Capacitor + PWA scaffolded. PNG icon set. `VITE_API_BASE_URL` for native.
+- [x] Functional audit complete (see history 2026-06-17) and product reframed to v3.0 three-panel model.
 - [ ] Apply `design.md` + `UI-UX.md` as the styling baseline; reconcile current generic Tailwind look against the brand system.
+- [ ] (Future) consider code-splitting — main JS chunk is ~650 kB (jsPDF/html2canvas heavy).
 
 ## Decisions log (recent)
+- 2026-06-17: **Product reframe to v3.0** — basket optimizer, not meal planner. Three panels (Snapshot/Tune/Benchmark) over one engine + cost toggle. PRD §1A is authoritative. Functional audit done (29 findings).
+- 2026-06-17: Mobile = **Capacitor** (reuse React/Vite, one codebase) over React Native/Expo. PWA added alongside.
+- 2026-06-17: Web host = **Railway** (single Docker container, Git-push + PR previews, no cold starts). Render/Fly noted as alternatives; Fly is the geo-ready future option.
+- 2026-06-17: Future DB for live-pricing/geo → Postgres+PostGIS (Supabase available); SQLite stays for now.
 - 2026-06-17: Established four steering docs (`handoff`, `history`, `design`, `UI-UX`).
 
 ## Session-end checklist (do before ending)

@@ -1,16 +1,68 @@
 # NutriCostOptimizer — Product Requirements Document
 
-**Version:** 2.0
-**Date:** 2026-04-01
-**Status:** Draft
+**Version:** 3.0
+**Date:** 2026-06-17
+**Status:** Draft (reframed — see §1A)
+
+> **v3.0 reframe (2026-06-17):** The product is no longer a meal-plan / shopping-list
+> *generator*. It is an **optimizer of the diet a user already has.** §1A is the authoritative
+> product model. §1 and §3 are updated to match. Sections that still describe the old
+> "forward planner" framing (notably §5.3 Optimization and §5.4 Results Dashboard) are marked
+> **[LEGACY FRAMING — superseded by §1A]** and will be re-specified panel by panel as they are built.
 
 ---
 
 ## 1. Overview
 
-NutriCostOptimizer is a self-hostable web application that generates cost-minimized daily meal plans satisfying user-defined macronutrient targets. It is built for bodybuilders and macro-trackers who already weigh their food in grams and retain store receipts — users who want to optimize a process they already invest significant thought into.
+NutriCostOptimizer helps people **optimize the grocery-and-macro routine they already run.** The
+target user already buys their groceries, already knows their daily macro targets, and already
+knows what they paid. What they *can't* do by hand is the multi-variable interaction between the
+two: given the specific foods they buy at the specific prices they paid, is their spending and
+their eating optimally aligned with their macros across a diverse diet?
 
-The application accepts food items with prices and weights (via natural language or structured input), resolves verified nutritional data from a local database backed by USDA FoodData Central, and runs a linear programming solver to produce the cheapest possible daily food allocation that hits the user's macro targets.
+The user inputs the foods, amounts, and prices they already buy (from a receipt — eventually via a
+photo), plus their daily macro targets. The app resolves verified per-100g nutrition (local USDA
+database, USDA API fallback) and then makes the cost↔macro interaction **legible and optimizable**
+through three lenses over one analysis (see §1A). It is self-hostable and runs on any device.
+
+**What it is not:** a meal planner, a recipe builder, or a shopping-list generator. The user has
+already figured out *what* to buy. This is the last, hardest step — the math between cost and macros.
+
+---
+
+## 1A. Product Model (v3.0): Optimize the Basket You Already Have
+
+**Input:** the user's actual basket (foods + amounts + prices they already buy, weekly) and their
+daily macro targets. Weekly amounts ÷ 7 = their current de-facto daily intake.
+
+**One analysis, three selectable panels** (increasing aggressiveness). The analysis runs once; the
+user toggles between panels to view different insights:
+
+1. **Snapshot — insight, changes nothing.** Pure arithmetic on what they actually buy. Surfaces the
+   cost↔macro interaction: total daily/weekly cost, macros their basket actually delivers, **cost
+   per gram of protein/carb/fat**, each food's share of spend and contribution to each macro, a
+   "macro-per-dollar" efficiency leaderboard, and the gap (over/under) to their macro targets.
+   *No optimizer required — this is the foundational MVP of the reframed product.*
+
+2. **Tune — re-allocate, keep every food.** Keep all of the user's foods (each with a minimum so
+   nothing they bought is zeroed out) and optimize *how much* of each to hit their macros for the
+   least cost. Reads as: *"same groceries, eat this much of each → save $X/week"* or *"hit your
+   macros more precisely for the same spend."*
+
+3. **Benchmark — full re-optimization, may drop foods.** The unconstrained cost-minimizing solve,
+   honestly framed as the **theoretical floor**: *"the cheapest way to hit these macros from your
+   foods is $Y — you're $Z above it."* A motivating benchmark, not a prescription to eat 1.5kg of
+   one food.
+
+**Cost role** is not a separate mode; it folds in:
+- Snapshot = report spend & efficiency (no objective).
+- Tune & Benchmark each carry a toggle: **minimize spend** (default) vs **respect a target budget**.
+
+**Engine:** a single computation produces a rich result object that all three panels read from.
+Snapshot is arithmetic; Tune and Benchmark are LP solves (constrained vs unconstrained).
+
+**Receipt-photo future:** OCR populates the basket that all three panels consume — it is an input
+mechanism for the model above, not a separate feature.
 
 ---
 
@@ -33,21 +85,31 @@ The application accepts food items with prices and weights (via natural language
 ## 3. Goals & Non-Goals
 
 ### Goals
-- Minimize daily food cost while meeting macro targets within tolerance.
-- Accept natural language input (e.g., "chicken breast 3lbs 15 dollars") parsed by any OpenAI-compatible AI API.
-- Provide verified nutritional data from a local USDA-based database, falling back to the USDA FoodData Central API when a food is not found locally.
-- Run on any device — fast, responsive, mobile-first.
-- Self-hostable via `docker compose up`.
+- **Make the cost↔macro interaction legible** for a basket the user already buys (Snapshot panel).
+- **Optimize the user's existing basket** — re-allocate amounts to hit macros for less, keeping every
+  food they chose (Tune panel) — and show the theoretical cost floor as a benchmark (Benchmark panel).
+- Treat the user's actual basket + daily macros as the input; do **not** prescribe a meal plan or shopping list.
+- Provide verified per-100g nutrition from a local USDA-based database, falling back to the USDA
+  FoodData Central API when a food is not found locally. Nutrition is never AI-estimated by default.
+- Accept fast basket entry (manual now; natural-language and **receipt photo/OCR** over time).
+- Run on any device — fast, responsive, mobile-first. Self-hostable via `docker compose up`.
 - No user accounts. No login. Instant access.
-- Persist only user preferences (API config, default macro targets, preferred units) in browser localStorage for faster subsequent sessions.
+- Persist user preferences **and the working basket/goals** in browser localStorage so an accidental
+  reload doesn't destroy a session's worth of input.
 
 ### Non-Goals (Future Considerations)
 - User accounts and authentication.
-- Recipe or composite food support.
+- Generating meal plans, recipes, or shopping lists (the user already decides *what* to buy).
 - Dietary restriction filtering (vegan, gluten-free, allergies).
 - Meal-structured plans (breakfast/lunch/dinner assignment).
-- Food price history or trend tracking.
-- Grocery store API integrations or price scraping.
+- Grocery store API integrations or live price feeds (longer-term vision, not current scope).
+
+### Re-sequenced delivery (supersedes §11 for v3.0)
+1. **Snapshot panel** + basket persistence (H4) + correctness guards (C1 price>0, C2 USDA data, H5 totals).
+2. **Optimizer test harness** (L5) so Tune/Benchmark are safe to build.
+3. **Tune panel** (keep-all re-allocation with min-serving constraints) + macro/calorie consistency (H2).
+4. **Benchmark panel** (reframed current LP) + cost-objective toggle (minimize vs target budget).
+5. AI/receipt input hardening (C3/C4 disambiguation, M1 JSON robustness) and M-tier hardening.
 
 ---
 
@@ -261,6 +323,11 @@ Defaults are stored in localStorage and updated when the user changes them — s
 
 ### 5.3 Optimization
 
+> **[LEGACY FRAMING — superseded by §1A]** This section describes the original single
+> "cheapest plan" solve. Under v3.0 it becomes the **Benchmark** panel (the theoretical floor),
+> alongside the new **Tune** (keep-every-food re-allocation) and **Snapshot** (insight) panels.
+> The solver mechanics below remain accurate for the Benchmark case.
+
 #### 5.3.1 Solver
 
 Client-side linear programming using `javascript-lp-solver`.
@@ -296,6 +363,11 @@ When the solver returns no feasible solution:
 4. Suggestions are limited to ±25% of the original constraint value. If relaxation beyond 25% is needed, the message is: "Your targets and budget are too far apart — adjust your goals or add more food options."
 
 ### 5.4 Results Dashboard
+
+> **[LEGACY FRAMING — superseded by §1A]** The v3.0 results surface is the **three-panel**
+> view (Snapshot / Tune / Benchmark) over one analysis. The "Weekly Shopping List" output below
+> is dropped (the user already has their basket). The metrics, tables, and chart described here
+> are reusable building blocks for the Tune and Benchmark panels.
 
 Displayed after successful optimization. The UI scrolls smoothly to this section.
 
